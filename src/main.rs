@@ -9,9 +9,9 @@ struct Main;
 #[derive(Debug)]
 enum Message {}
 
-fn main() {
+fn main() -> iced::Result {
     iced::application("TITLE", Main::update, Main::view)
-        .run_with(|| (Main, Task::none()));
+        .run_with(|| (Main, Task::none()))
 }
 
 impl Main {
