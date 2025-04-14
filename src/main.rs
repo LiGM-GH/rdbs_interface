@@ -3,13 +3,15 @@ use iced::{
     Alignment, Element, Length, Task,
     widget::{column, row, text_input},
 };
+use tokio_postgres::NoTls;
 
 #[derive(Default)]
 struct Main {
     dbname: Option<String>,
     username: Option<String>,
     password: Option<String>,
-    this_thing_expanded: bool,
+    host: Option<String>,
+    port: Option<u16>,
 }
 
 #[derive(Debug, Clone)]
@@ -17,8 +19,9 @@ enum Message {
     DbNameChange(String),
     UsernameInput(String),
     PasswordInput(String),
-    ThisThingPress,
-    ThisThingDismissed,
+    HostInput(String),
+    PortInput(u16),
+    Start,
 }
 
 fn get_theme() -> iced::Theme {
@@ -43,7 +46,6 @@ impl Main {
         match msg {
             Message::DbNameChange(name) => {
                 self.dbname = Some(name);
-                self.this_thing_expanded = true;
                 Task::none()
             }
             Message::UsernameInput(name) => {
@@ -54,14 +56,16 @@ impl Main {
                 self.password = Some(password);
                 Task::none()
             }
-            Message::ThisThingPress => {
-                self.username = Some("OH NO!".into());
+            Message::HostInput(host) => {
+                self.host = Some(host);
                 Task::none()
             }
-            Message::ThisThingDismissed => {
-                self.this_thing_expanded = false;
+
+            Message::PortInput(port) => {
+                self.port = Some(port);
                 Task::none()
             }
+            Message::Start => todo!(),
         }
     }
 
@@ -81,18 +85,25 @@ impl Main {
         .width(Length::FillPortion(8))
         .on_input(Message::PasswordInput);
 
-        let dbname_input = iced_aw::DropDown::new(
-            text_input(
-                "DB name",
-                self.dbname.as_ref().unwrap_or(&String::new()),
-            )
-            .width(Length::FillPortion(8))
-            .on_input(Message::DbNameChange),
-            iced::widget::button("This is a thing")
-                .on_press(Message::ThisThingPress),
-            self.this_thing_expanded,
+        let dbname_input = text_input(
+            "DB name",
+            self.dbname.as_ref().unwrap_or(&String::new()),
         )
-        .on_dismiss(Message::ThisThingDismissed);
+        .width(Length::FillPortion(8))
+        .on_input(Message::DbNameChange);
+
+        let host_input = iced::widget::text_input(
+            "Host",
+            self.host.as_ref().map_or("", |val| val as &str),
+        )
+        .on_input(Message::HostInput)
+        .width(Length::FillPortion(6));
+
+        let port_input = iced_aw::typed_input::<u16, _, _, _, _>(
+            self.port.as_ref().unwrap_or(&0),
+            Message::PortInput,
+        )
+        .width(Length::FillPortion(2));
 
         column![
             iced::widget::vertical_space().width(Length::Fill),
@@ -117,6 +128,23 @@ impl Main {
             ]
             .width(Length::Fill)
             .align_y(Alignment::Center),
+            row![
+                iced::widget::horizontal_space().width(Length::FillPortion(1)),
+                host_input,
+                port_input,
+                iced::widget::horizontal_space().width(Length::FillPortion(1)),
+            ]
+            .width(Length::Fill)
+            .align_y(Alignment::Center),
+            row![
+                iced::widget::horizontal_space().width(Length::FillPortion(1)),
+                iced::widget::button("Start")
+                    .on_press(Message::Start)
+                    .width(Length::FillPortion(8)),
+                iced::widget::horizontal_space().width(Length::FillPortion(1)),
+            ]
+            .width(Length::Fill)
+            .align_y(Alignment::Center),
             iced::widget::vertical_space().width(Length::Fill),
         ]
         .width(Length::Fill)
@@ -124,4 +152,59 @@ impl Main {
         .align_x(Alignment::Center)
         .into()
     }
+}
+
+#[derive(Debug)]
+enum ConnErr {
+    TokioError(tokio_postgres::Error),
+}
+
+impl std::fmt::Display for ConnErr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnErr")
+            .field(
+                "value",
+                match self {
+                    Self::TokioError(err) => err as &dyn std::fmt::Debug,
+                },
+            )
+            .finish()
+    }
+}
+
+impl std::error::Error for ConnErr {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::TokioError(err) => err.source(),
+        }
+    }
+}
+
+impl From<tokio_postgres::Error> for ConnErr {
+    fn from(value: tokio_postgres::Error) -> Self {
+        Self::TokioError(value)
+    }
+}
+
+async fn connect(
+    username: String,
+    password: String,
+    host: String,
+    port: u16,
+    dbname: String,
+) -> Result<tokio_postgres::Client, ConnErr> {
+    let mut config = tokio_postgres::Config::new();
+
+    config
+        .user(username)
+        .password(password)
+        .host(host)
+        .port(port)
+        .dbname(dbname);
+
+    let (client, conn) = config.connect(NoTls).await?;
+
+    tokio::task::spawn(conn);
+
+    Ok(client)
 }
