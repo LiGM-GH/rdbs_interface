@@ -1,10 +1,15 @@
 use iced::{Element, Task};
+use log::info;
 
 mod auth;
 mod manage;
 mod theme;
 
 fn main() -> iced::Result {
+    log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
+
+    info!("Starting the app");
+
     iced::application("RDBS_Interface", View::update, View::view)
         .executor::<tokio::runtime::Runtime>()
         .theme(|_val| theme::get())

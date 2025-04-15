@@ -1,10 +1,11 @@
 use gio::prelude::SettingsExtManual;
+use log::info;
 
 pub fn get() -> iced::Theme {
     let settings = gio::Settings::new("org.gnome.desktop.interface");
     let theme: String = settings.get("color-scheme");
 
-    dbg!(&theme);
+    info!("{}", theme);
 
     match &theme as &str {
         "prefer-light" | "default" => iced::Theme::GruvboxLight,
@@ -12,4 +13,3 @@ pub fn get() -> iced::Theme {
         _ => iced::Theme::default(),
     }
 }
-
