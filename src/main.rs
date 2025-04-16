@@ -1,5 +1,8 @@
+use std::sync::Arc;
+
 use iced::{Element, Task};
 use log::info;
+use tokio_postgres::Client;
 
 mod auth;
 mod manage;
@@ -24,7 +27,7 @@ enum Message {
 
 enum View {
     Auth(auth::View),
-    Manage(manage::View),
+    Manage(manage::View<Arc<Client>>),
 }
 
 impl Default for View {
@@ -44,18 +47,6 @@ impl View {
     fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::Auth(auth::Message::Connected(client)) => {
-                let Ok(mut lock) = client.lock() else {
-                    return Task::done(Message::Auth(auth::Message::Error(
-                        "Didn't lock the guard: poisoned!",
-                    )));
-                };
-
-                let Some(client) = lock.take() else {
-                    return Task::done(Message::Auth(auth::Message::Error(
-                        "We are too quick: DB client not created!",
-                    )));
-                };
-
                 let manage = manage::View::new(client);
                 *self = View::Manage(manage);
 

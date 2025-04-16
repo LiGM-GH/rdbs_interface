@@ -1,6 +1,6 @@
 //! This module contains auth view and its messages
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use iced::{
     Alignment, Color, Element, Length, Task,
@@ -29,7 +29,7 @@ pub enum Message {
     PortInput(u16),
     Start,
 
-    Connected(Arc<Mutex<Option<tokio_postgres::Client>>>),
+    Connected(Arc<tokio_postgres::Client>),
 }
 
 impl View {
@@ -86,9 +86,7 @@ impl View {
                         dbname.clone(),
                     ),
                     |val| match val {
-                        Ok(client) => Message::Connected(Arc::new(Mutex::new(
-                            Some(client),
-                        ))),
+                        Ok(client) => Message::Connected(Arc::new(client)),
                         Err(_err) => Message::Error("Couldn't connect to DB"),
                     },
                 )

@@ -6,8 +6,8 @@ use iced::{
 };
 use tokio_postgres::Client;
 
-pub struct View {
-    client: Option<Client>,
+pub struct View<DB: AsRef<Client>> {
+    client: DB,
 }
 
 #[derive(Clone, Debug)]
@@ -15,11 +15,9 @@ pub enum Message {
     Hello,
 }
 
-impl View {
-    pub fn new(client: Client) -> Self {
-        Self {
-            client: Some(client),
-        }
+impl<DB: AsRef<Client>> View<DB> {
+    pub fn new(client: DB) -> Self {
+        Self { client }
     }
 
     pub fn view(&self) -> iced::Element<'_, Message> {
