@@ -7,6 +7,7 @@ use tokio_postgres::Client;
 mod auth;
 mod manage;
 mod theme;
+mod helpers;
 
 fn main() -> iced::Result {
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();

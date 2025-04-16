@@ -4,9 +4,11 @@ use std::sync::Arc;
 
 use iced::{
     Alignment, Color, Element, Length, Task,
-    widget::{column, row, text, text_input},
+    widget::{column, text, text_input},
 };
 use tokio_postgres::NoTls;
+
+use crate::helpers::{centered_row, centered_row2};
 
 #[derive(Default)]
 pub struct View {
@@ -138,34 +140,6 @@ impl View {
         let errmsg: Element<Message> = text(self.errmsg.unwrap_or(""))
             .color(Color::from_rgba(1.0, 0.0, 0.0, 1.0))
             .into();
-
-        fn centered_row<'that>(
-            val: impl Into<Element<'that, Message>>,
-        ) -> Element<'that, Message> {
-            row![
-                iced::widget::horizontal_space().width(Length::FillPortion(1)),
-                Into::<Element<Message>>::into(val),
-                iced::widget::horizontal_space().width(Length::FillPortion(1)),
-            ]
-            .width(Length::Fill)
-            .align_y(Alignment::Center)
-            .into()
-        }
-
-        fn centered_row2<'that>(
-            val1: impl Into<Element<'that, Message>>,
-            val2: impl Into<Element<'that, Message>>,
-        ) -> Element<'that, Message> {
-            row![
-                iced::widget::horizontal_space().width(Length::FillPortion(1)),
-                Into::<Element<Message>>::into(val1),
-                Into::<Element<Message>>::into(val2),
-                iced::widget::horizontal_space().width(Length::FillPortion(1)),
-            ]
-            .width(Length::Fill)
-            .align_y(Alignment::Center)
-            .into()
-        }
 
         column![
             iced::widget::vertical_space().width(Length::Fill),
