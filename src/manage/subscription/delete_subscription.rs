@@ -1,24 +1,28 @@
 use iced::{
-    widget::{button, column}, Element, Task
+    Element, Task,
+    widget::{button, column},
 };
-use tokio_postgres::Client;
 
-use crate::helpers::centered_row;
+use crate::{helpers::centered_row, manage::AsClient};
 
-pub struct View<DB: AsRef<Client>> {
+pub struct View<DB: AsClient> {
     client: DB,
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {}
 
-impl<DB: AsRef<Client>> View<DB> {
+impl<DB: AsClient> View<DB> {
+    pub fn get_db(&self) -> DB {
+        self.client.clone()
+    }
+
     pub fn new(client: DB) -> Self {
         Self { client }
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        column![centered_row(button("Thing"),)].into()
+        column![centered_row(button("Add table"),)].into()
     }
 
     pub fn update(&mut self, msg: Message) -> Task<Message> {
