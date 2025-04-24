@@ -1,7 +1,5 @@
 use iced::{
-    Element, Renderer, Theme,
-    advanced::{Widget, widget::operation::Focusable},
-    keyboard::{Key, key::Named},
+    advanced::{layout, widget::operation::Focusable, Widget}, keyboard::{key::Named, Key}, Element, Renderer, Theme
 };
 
 struct State {
@@ -83,7 +81,9 @@ impl<Message, Fun: FunForMessage<Message = Message>>
     ) -> iced::advanced::layout::Node {
         let tree = tree.children.first_mut().unwrap();
 
-        self.inner.as_widget().layout(tree, renderer, limits)
+        let size = self.inner.as_widget().size();
+        let limit_left = size.width;
+        layout::contained
     }
 
     fn draw(
