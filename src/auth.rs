@@ -4,11 +4,15 @@ use std::sync::Arc;
 
 use iced::{
     Alignment, Color, Element, Length, Task,
+    keyboard::{Key, key::Named},
     widget::{column, text, text_input},
 };
 use tokio_postgres::NoTls;
 
-use crate::helpers::{centered_row, centered_row2};
+use crate::{
+    event_catcher::event_catcher,
+    helpers::{centered_row, centered_row2},
+};
 
 #[derive(Default)]
 pub struct View {
@@ -79,6 +83,8 @@ impl View {
                     return Task::done(Message::Error("No port provided"));
                 };
 
+                self.errmsg = None;
+
                 Task::perform(
                     connect(
                         username.clone(),
@@ -97,7 +103,9 @@ impl View {
                 self.errmsg = Some(err);
                 Task::none()
             }
-            Message::Connected(_) => unreachable!(),
+            Message::Connected(_) => Task::done(Message::Error(
+                "Connected message should have been handled higher",
+            )),
         }
     }
 
@@ -148,11 +156,23 @@ impl View {
             centered_row(password_input),
             centered_row(dbname_input),
             centered_row2(host_input, port_input),
-            centered_row(
+            centered_row(event_catcher(
                 iced::widget::button("Start")
                     .on_press(Message::Start)
-                    .width(Length::FillPortion(8)),
-            ),
+                    .width(Length::FillPortion(8))
+                    .into(),
+                |event| {
+                    match event {
+                        iced::Event::Keyboard(
+                            iced::keyboard::Event::KeyPressed {
+                                key: Key::Named(Named::Enter),
+                                ..
+                            },
+                        ) => Some(Message::Start),
+                        _ => None,
+                    }
+                }
+            )),
             iced::widget::vertical_space().width(Length::Fill),
         ]
         .width(Length::Fill)
