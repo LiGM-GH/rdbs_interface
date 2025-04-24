@@ -1,8 +1,12 @@
 use iced::{
     Element, Renderer, Theme,
-    advanced::Widget,
+    advanced::{Widget, widget::operation::Focusable},
     keyboard::{Key, key::Named},
 };
+
+struct State {
+    has_focus: bool,
+}
 
 pub trait FunForMessage: Clone {
     type Message;
@@ -20,6 +24,7 @@ impl<Message, T: Fn(iced::Event) -> Option<Message> + Clone> FunForMessage
 }
 
 pub struct EventCatcher<'a, Message, Fun: FunForMessage<Message = Message>> {
+    id: iced::advanced::widget::Id,
     inner: iced::Element<'a, Message>,
     fun: Fun,
 }
@@ -47,7 +52,11 @@ impl<'a, Message, Fun: FunForMessage<Message = Message>>
     EventCatcher<'a, Message, Fun>
 {
     pub fn new(inner: iced::Element<'a, Message>, fun: Fun) -> Self {
-        Self { inner, fun }
+        Self {
+            id: iced::advanced::widget::Id::unique(),
+            inner,
+            fun,
+        }
     }
 }
 
@@ -72,6 +81,8 @@ impl<Message, Fun: FunForMessage<Message = Message>>
         renderer: &Renderer,
         limits: &iced::advanced::layout::Limits,
     ) -> iced::advanced::layout::Node {
+        let tree = tree.children.first_mut().unwrap();
+
         self.inner.as_widget().layout(tree, renderer, limits)
     }
 
@@ -85,6 +96,9 @@ impl<Message, Fun: FunForMessage<Message = Message>>
         cursor: iced::advanced::mouse::Cursor,
         viewport: &iced::Rectangle,
     ) {
+        let tree = tree.children.first().unwrap();
+        let layout = layout.children().next().unwrap();
+
         self.inner
             .as_widget()
             .draw(tree, renderer, theme, style, layout, cursor, viewport);
@@ -92,7 +106,7 @@ impl<Message, Fun: FunForMessage<Message = Message>>
 
     fn on_event(
         &mut self,
-        state: &mut iced::advanced::widget::Tree,
+        tree: &mut iced::advanced::widget::Tree,
         event: iced::Event,
         layout: iced::advanced::Layout<'_>,
         cursor: iced::advanced::mouse::Cursor,
@@ -101,11 +115,28 @@ impl<Message, Fun: FunForMessage<Message = Message>>
         shell: &mut iced::advanced::Shell<'_, Message>,
         viewport: &iced::Rectangle,
     ) -> iced::advanced::graphics::core::event::Status {
-        if let Some(msg) = FunForMessage::call(self.fun.clone(), event.clone())
-        {
-            shell.publish(msg);
-            return iced::advanced::graphics::core::event::Status::Captured;
+        'block: {
+            if let Some(msg) =
+                FunForMessage::call(self.fun.clone(), event.clone())
+            {
+                let state = tree.state.downcast_mut::<State>();
+
+                if state.is_focused() {
+                    log::trace!("Self is focused!");
+                    shell.publish(msg);
+                    return iced::advanced::graphics::core::event::Status::Captured;
+                } else {
+                    log::trace!("Self is not focused!");
+                    break 'block;
+                }
+            } else {
+                log::trace!("Event is not our event!");
+                break 'block;
+            }
         }
+
+        let state = tree.children.first_mut().unwrap();
+        let layout = layout.children().next().unwrap();
 
         self.inner.as_widget_mut().on_event(
             state, event, layout, cursor, renderer, clipboard, shell, viewport,
@@ -113,41 +144,55 @@ impl<Message, Fun: FunForMessage<Message = Message>>
     }
 
     fn children(&self) -> Vec<iced::advanced::widget::Tree> {
-        self.inner.as_widget().children()
+        vec![iced::advanced::widget::Tree::new(&self.inner)]
     }
 
     fn tag(&self) -> iced::advanced::widget::tree::Tag {
         self.inner.as_widget().tag()
     }
 
-    fn diff(&self, _tree: &mut iced::advanced::widget::Tree) {
-        self.inner.as_widget().diff(_tree)
+    fn diff(&self, tree: &mut iced::advanced::widget::Tree) {
+        tree.diff_children(&[&self.inner])
     }
 
     fn state(&self) -> iced::advanced::widget::tree::State {
-        self.inner.as_widget().state()
+        iced::advanced::widget::tree::State::new(State {
+            has_focus: false,
+        })
     }
 
     fn operate(
         &self,
-        state: &mut iced::advanced::widget::Tree,
+        tree: &mut iced::advanced::widget::Tree,
         layout: iced::advanced::Layout<'_>,
         renderer: &Renderer,
         operation: &mut dyn iced::advanced::widget::Operation,
     ) {
-        self.inner
-            .as_widget()
-            .operate(state, layout, renderer, operation);
+        let state = tree.state.downcast_mut::<State>();
+
+        operation.focusable(state, Some(&self.id));
+
+        let child = tree.children.get_mut(0).unwrap();
+
+        self.inner.as_widget().operate(
+            child,
+            layout.children().next().unwrap(),
+            renderer,
+            operation,
+        );
     }
 
     fn overlay<'a>(
         &'a mut self,
-        state: &'a mut iced::advanced::widget::Tree,
+        tree: &'a mut iced::advanced::widget::Tree,
         layout: iced::advanced::Layout<'_>,
         renderer: &Renderer,
         translation: iced::Vector,
     ) -> Option<iced::advanced::overlay::Element<'a, Message, Theme, Renderer>>
     {
+        let state = tree.children.first_mut().unwrap();
+        let layout = layout.children().next().unwrap();
+
         self.inner
             .as_widget_mut()
             .overlay(state, layout, renderer, translation)
@@ -159,14 +204,33 @@ impl<Message, Fun: FunForMessage<Message = Message>>
 
     fn mouse_interaction(
         &self,
-        state: &iced::advanced::widget::Tree,
+        tree: &iced::advanced::widget::Tree,
         layout: iced::advanced::Layout<'_>,
         cursor: iced::advanced::mouse::Cursor,
         viewport: &iced::Rectangle,
         renderer: &Renderer,
     ) -> iced::advanced::mouse::Interaction {
+        let state = tree.children.first().unwrap();
+        let layout = layout.children().next().unwrap();
+
         self.inner
             .as_widget()
             .mouse_interaction(state, layout, cursor, viewport, renderer)
+    }
+}
+
+impl iced::advanced::widget::operation::Focusable for State {
+    fn is_focused(&self) -> bool {
+        self.has_focus
+    }
+
+    fn focus(&mut self) {
+        log::trace!("Self is being focused!");
+        self.has_focus = true;
+    }
+
+    fn unfocus(&mut self) {
+        log::trace!("Self is being unfocused!");
+        self.has_focus = false;
     }
 }
