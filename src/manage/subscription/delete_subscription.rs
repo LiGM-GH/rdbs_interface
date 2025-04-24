@@ -5,6 +5,7 @@ use iced::{
 
 use crate::{helpers::centered_row, manage::AsClient};
 
+#[derive(Debug)]
 pub struct View<DB: AsClient> {
     client: DB,
 }

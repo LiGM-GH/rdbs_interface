@@ -12,7 +12,7 @@ mod auth;
 mod helpers;
 mod manage;
 mod theme;
-mod event_catcher;
+mod widgets;
 
 fn main() -> iced::Result {
     log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
@@ -53,6 +53,7 @@ struct View {
     auth: auth::View,
 }
 
+#[derive(Debug)]
 enum ViewVariant {
     Auth,
     Manage(manage::View<Arc<Client>>),
@@ -76,6 +77,8 @@ impl View {
     }
 
     fn update(&mut self, msg: Message) -> Task<Message> {
+        log::trace!("main: update: message: {:?}", msg);
+
         match msg {
             Message::FocusNext => focus_next(),
             Message::FocusPrev => focus_previous(),
@@ -93,6 +96,12 @@ impl View {
                 Task::none()
             }
             Message::Manage(message) => {
+                log::trace!(
+                    "This is message: {:?}, and that is view: {:?}",
+                    message,
+                    self.view
+                );
+
                 let ViewVariant::Manage(manage) = &mut self.view else {
                     self.view = ViewVariant::Auth;
 

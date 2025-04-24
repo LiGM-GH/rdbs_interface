@@ -1,9 +1,14 @@
 use iced::{
-    widget::{button, column}, Element, Task
+    Element, Task,
+    widget::{button, column},
 };
 
-use crate::{helpers::centered_row, manage::AsClient};
+use crate::{
+    helpers::centered_row, manage::AsClient,
+    widgets::event_catcher::event_catcher,
+};
 
+#[derive(Debug)]
 pub struct View<DB: AsClient> {
     client: DB,
 }
@@ -21,7 +26,10 @@ impl<DB: AsClient> View<DB> {
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        column![centered_row(button("Add table"),)].into()
+        column![centered_row(event_catcher(button("Add table"), |_| {
+            None
+        }))]
+        .into()
     }
 
     pub fn update(&mut self, msg: Message) -> Task<Message> {

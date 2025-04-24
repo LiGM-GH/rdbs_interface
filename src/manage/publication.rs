@@ -1,16 +1,25 @@
 //! This module contains Publication view and its messages
 
-use iced::{Alignment, Length, Task, widget::column};
+use iced::{
+    Alignment, Length, Task,
+    widget::{button, column},
+};
 
-use crate::{helpers::centered_row, manage::AsClient};
+use crate::{
+    helpers::centered_row,
+    manage::AsClient,
+    widgets::event_catcher::{enter_catcher, event_catcher},
+};
 
 mod add_table;
 
+#[derive(Debug)]
 pub struct View<DB: AsClient> {
     view: ViewVariant<DB>,
     errmsg: Option<&'static str>,
 }
 
+#[derive(Debug)]
 enum ViewVariant<DB: AsClient> {
     Main(DB),
     CreateSubscription(add_table::View<DB>),
@@ -42,17 +51,19 @@ impl<DB: AsClient> View<DB> {
     pub fn view(&self) -> iced::Element<'_, Message> {
         match self.view {
             ViewVariant::Main(_) => {
-                let header = iced::widget::row![
-                    iced::widget::button("Back").on_press(Message::Back),
-                ];
+                let header = iced::widget::row![event_catcher(
+                    button("Back").on_press(Message::Back),
+                    enter_catcher(Message::Back)
+                )];
 
                 let main_view: iced::Element<_> = column![
                     iced::widget::vertical_space().width(Length::Fill),
-                    centered_row(
+                    centered_row(event_catcher(
                         iced::widget::button("Create subscription")
                             .on_press(Message::CreateSubscription)
                             .width(Length::FillPortion(8)),
-                    ),
+                        enter_catcher(Message::CreateSubscription),
+                    )),
                     iced::widget::vertical_space().width(Length::Fill),
                 ]
                 .width(Length::Fill)

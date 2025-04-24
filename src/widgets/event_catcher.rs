@@ -1,11 +1,17 @@
-use iced::{Element, Renderer, Theme, advanced::Widget};
+use iced::{
+    Element, Renderer, Theme,
+    advanced::Widget,
+    keyboard::{Key, key::Named},
+};
 
 pub trait FunForMessage: Clone {
     type Message;
     fn call(self, event: iced::Event) -> Option<Self::Message>;
 }
 
-impl<Message, T: Fn(iced::Event) -> Option<Message> + Clone> FunForMessage for T {
+impl<Message, T: Fn(iced::Event) -> Option<Message> + Clone> FunForMessage
+    for T
+{
     type Message = Message;
 
     fn call(self, event: iced::Event) -> Option<Self::Message> {
@@ -18,11 +24,23 @@ pub struct EventCatcher<'a, Message, Fun: FunForMessage<Message = Message>> {
     fun: Fun,
 }
 
-pub fn event_catcher<Message, Fun: FunForMessage<Message = Message>>(
-    inner: iced::Element<'_, Message>,
+pub fn enter_catcher<Message: Clone>(
+    msg: Message,
+) -> impl FunForMessage<Message = Message> {
+    move |event| match event {
+        iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+            key: Key::Named(Named::Enter),
+            ..
+        }) => Some(msg.clone()),
+        _ => None,
+    }
+}
+
+pub fn event_catcher<'a, Message, Fun: FunForMessage<Message = Message>>(
+    inner: impl Into<iced::Element<'a, Message>>,
     fun: Fun,
-) -> EventCatcher<'_, Message, Fun> {
-    EventCatcher::new(inner, fun)
+) -> EventCatcher<'a, Message, Fun> {
+    EventCatcher::new(inner.into(), fun)
 }
 
 impl<'a, Message, Fun: FunForMessage<Message = Message>>
@@ -83,8 +101,11 @@ impl<Message, Fun: FunForMessage<Message = Message>>
         shell: &mut iced::advanced::Shell<'_, Message>,
         viewport: &iced::Rectangle,
     ) -> iced::advanced::graphics::core::event::Status {
-        FunForMessage::call(self.fun.clone(), event.clone())
-            .map(|msg| shell.publish(msg));
+        if let Some(msg) = FunForMessage::call(self.fun.clone(), event.clone())
+        {
+            shell.publish(msg);
+            return iced::advanced::graphics::core::event::Status::Captured;
+        }
 
         self.inner.as_widget_mut().on_event(
             state, event, layout, cursor, renderer, clipboard, shell, viewport,

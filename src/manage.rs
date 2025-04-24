@@ -4,7 +4,10 @@
 use iced::{Alignment, Length, Task};
 use tokio_postgres::Client;
 
-use crate::helpers;
+use crate::{
+    helpers,
+    widgets::event_catcher::{enter_catcher, event_catcher},
+};
 
 mod publication;
 mod subscription;
@@ -13,11 +16,13 @@ pub trait AsClient: AsRef<Client> + Clone {}
 
 impl<T: AsRef<Client> + Clone> AsClient for T {}
 
+#[derive(Debug)]
 pub struct View<DB: AsClient> {
     view: ViewVariant<DB>,
     error: Option<&'static str>,
 }
 
+#[derive(Debug)]
 enum ViewVariant<DB: AsClient> {
     Choose(DB),
     Pub(publication::View<DB>),
@@ -61,9 +66,10 @@ impl<DB: AsClient> View<DB> {
     }
 
     fn choose_view(&self) -> iced::Element<'_, Message> {
-        let header = iced::widget::row![
+        let header = iced::widget::row![event_catcher(
             iced::widget::button("Back").on_press(Message::Back),
-        ];
+            enter_catcher(Message::Back)
+        ),];
 
         let main_view: iced::Element<_> =
             iced::widget::container(iced::widget::column![
@@ -74,7 +80,7 @@ impl<DB: AsClient> View<DB> {
                     iced::widget::button("The Pub manager")
                         .on_press(Message::PubChosen),
                     iced::widget::button("The Sub manager")
-                        .on_press(Message::SubChosen)
+                        .on_press(Message::SubChosen),
                 )
             ])
             .align_x(Alignment::Center)

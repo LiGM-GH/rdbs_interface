@@ -4,14 +4,13 @@ use std::sync::Arc;
 
 use iced::{
     Alignment, Color, Element, Length, Task,
-    keyboard::{Key, key::Named},
-    widget::{column, text, text_input},
+    widget::{button, column, text, text_input},
 };
 use tokio_postgres::NoTls;
 
 use crate::{
-    event_catcher::event_catcher,
     helpers::{centered_row, centered_row2},
+    widgets::event_catcher::{enter_catcher, event_catcher},
 };
 
 #[derive(Default)]
@@ -57,11 +56,11 @@ impl View {
                 self.host = Some(host);
                 Task::none()
             }
-
             Message::PortInput(port) => {
                 self.port = Some(port);
                 Task::none()
             }
+
             Message::Start => {
                 let Some(username) = &self.username else {
                     return Task::done(Message::Error("No username provided"));
@@ -157,21 +156,8 @@ impl View {
             centered_row(dbname_input),
             centered_row2(host_input, port_input),
             centered_row(event_catcher(
-                iced::widget::button("Start")
-                    .on_press(Message::Start)
-                    .width(Length::FillPortion(8))
-                    .into(),
-                |event| {
-                    match event {
-                        iced::Event::Keyboard(
-                            iced::keyboard::Event::KeyPressed {
-                                key: Key::Named(Named::Enter),
-                                ..
-                            },
-                        ) => Some(Message::Start),
-                        _ => None,
-                    }
-                }
+                button("Start").on_press(Message::Start),
+                enter_catcher(Message::Start)
             )),
             iced::widget::vertical_space().width(Length::Fill),
         ]

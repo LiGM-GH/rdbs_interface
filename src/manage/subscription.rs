@@ -2,17 +2,19 @@
 
 use iced::{Alignment, Length, Task, widget::column};
 
-use crate::helpers::centered_row;
+use crate::{helpers::centered_row, widgets::event_catcher::{enter_catcher, event_catcher}};
 
 use super::AsClient;
 
 mod delete_subscription;
 
+#[derive(Debug)]
 pub struct View<DB: AsClient> {
     view: ViewVariant<DB>,
     errmsg: Option<&'static str>,
 }
 
+#[derive(Debug)]
 enum ViewVariant<DB: AsClient> {
     Main(DB),
     CreateSubscription(delete_subscription::View<DB>),
@@ -48,9 +50,10 @@ impl<DB: AsClient> View<DB> {
     pub fn view(&self) -> iced::Element<'_, Message> {
         match self.view {
             ViewVariant::Main(_) => {
-                let header = iced::widget::row![
+                let header = iced::widget::row![event_catcher(
                     iced::widget::button("Back").on_press(Message::Back),
-                ];
+                    enter_catcher(Message::Back)
+                )];
 
                 let main_view: iced::Element<_> = column![
                     iced::widget::vertical_space().width(Length::Fill),
