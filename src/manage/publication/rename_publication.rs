@@ -2,29 +2,28 @@ use std::sync::Arc;
 
 use iced::{
     Alignment, Color, Element, Length, Task,
-    widget::{button, column, pick_list, text, vertical_space},
+    widget::{button, column, pick_list, text, text_input, vertical_space},
 };
+use tokio_postgres::types::Type;
 
 use crate::{helpers::centered_row, manage::AsClient};
 
 #[derive(Debug)]
 pub struct View<DB: AsClient> {
     client: DB,
-    table_list: Arc<Vec<String>>,
-    table_curr: Option<String>,
     pub_list: Arc<Vec<String>>,
     pub_curr: Option<String>,
+    new_name: String,
     errmsg: Option<&'static str>,
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {
-    Tables(Arc<Vec<String>>),
-    TableSelected(String),
+    NewName(String),
     Pubs(Arc<Vec<String>>),
     PubSelected(String),
     Error(&'static str),
-    AddTable,
+    RenamePub,
     Back,
     Clear,
 }
@@ -47,11 +46,10 @@ impl<DB: AsClient> View<DB> {
         (
             Self {
                 client,
-                table_list: Arc::new(Vec::new()),
-                table_curr: None,
                 errmsg: None,
                 pub_list: Arc::new(Vec::new()),
                 pub_curr: None,
+                new_name: String::new(),
             },
             pubs_task,
         )
@@ -69,11 +67,6 @@ impl<DB: AsClient> View<DB> {
         let pub_list =
             pick_list(options, self.pub_curr.clone(), Message::PubSelected);
 
-        let options = self.table_list.as_slice();
-
-        let table_list =
-            pick_list(options, self.table_curr.clone(), Message::TableSelected);
-
         let errmsg: Element<Message> = text(self.errmsg.unwrap_or(""))
             .color(Color::from_rgba(1.0, 0.0, 0.0, 1.0))
             .into();
@@ -82,12 +75,15 @@ impl<DB: AsClient> View<DB> {
             vertical_space().height(Length::FillPortion(1)),
             centered_row(errmsg),
             pub_list,
-            table_list,
-            centered_row(button("Add table").on_press_maybe(
-                if self.table_curr.is_some() {
-                    Some(Message::AddTable)
-                } else {
+            centered_row(
+                text_input("New name", &self.new_name)
+                    .on_input(Message::NewName)
+            ),
+            centered_row(button("Rename publication").on_press_maybe(
+                if self.new_name.is_empty() {
                     None
+                } else {
+                    Some(Message::RenamePub)
                 }
             )),
             vertical_space().height(Length::FillPortion(1)),
@@ -106,12 +102,8 @@ impl<DB: AsClient> View<DB> {
                 self.errmsg = Some(err);
                 Task::none()
             }
-            Message::Tables(tables) => {
-                self.table_list = tables;
-                Task::none()
-            }
-            Message::TableSelected(table) => {
-                self.table_curr = Some(table);
+            Message::NewName(name) => {
+                self.new_name = name;
                 Task::none()
             }
             Message::Pubs(pubs) => {
@@ -120,92 +112,67 @@ impl<DB: AsClient> View<DB> {
             }
             Message::PubSelected(publication) => {
                 self.pub_curr = Some(publication.clone());
-                Task::perform(
-                    Self::update_tables(self.client.clone(), publication),
-                    |val| match val {
-                        Ok(val) => Message::Tables(Arc::new(val)),
-                        Err(err) => {
-                            log::error!("{err}");
-                            Message::Error("Couldn't update tables")
-                        }
-                    },
-                )
+                Task::none()
             }
             Message::Back => Task::done(Message::Error(
                 "This should have been propagated higher",
             )),
-            Message::AddTable => {
+            Message::RenamePub => {
                 let Some(publication) = self.pub_curr.clone() else {
                     return Task::done(Message::Error(
                         "No publication provided",
                     ));
                 };
 
-                let Some(table) = self.table_curr.clone() else {
-                    return Task::done(Message::Error("No table provided"));
-                };
+                let new_name = self.new_name.clone();
 
                 Task::perform(
-                    Self::add_table(self.client.clone(), publication, table),
+                    Self::rename_publication(
+                        self.client.clone(),
+                        publication,
+                        new_name,
+                    ),
                     |val| match val {
                         Ok(()) => Message::Clear,
                         Err(err) => {
                             log::error!("{err}");
 
-                            Message::Error("Couldn't add table")
+                            Message::Error("Couldn't rename publication")
                         }
                     },
                 )
             }
             Message::Clear => {
-                self.table_curr = None;
                 self.pub_curr = None;
-                self.table_list = Arc::new(Vec::new());
                 self.errmsg = None;
+                self.new_name = String::new();
 
-                Task::none()
+                Task::perform(Self::update_pubs(self.client.clone()), |val| {
+                    match val {
+                        Ok(val) => Message::Pubs(Arc::new(val)),
+                        Err(err) => {
+                            log::error!("{err}");
+                            Message::Error("Couldn't update publications")
+                        }
+                    }
+                })
             }
         }
     }
 
-    async fn add_table(
+    async fn rename_publication(
         client: DB,
         publication: String,
-        table: String,
+        new_name: String,
     ) -> Result<(), tokio_postgres::Error> {
-        client
-            .as_ref()
-            .execute(
-                &format!(
-                    "ALTER PUBLICATION \"{}\" ADD TABLE public.\"{}\";",
-                    publication, table
-                ),
-                &[],
-            )
-            .await
-            .map(|_| ())
-    }
+        let new_name = pg_escape::quote_identifier(&new_name);
 
-    async fn update_tables(
-        client: DB,
-        publication: String,
-    ) -> Result<Vec<String>, tokio_postgres::Error> {
-        let val = client
-            .as_ref()
-            .query(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' EXCEPT (SELECT tablename FROM pg_publication_tables WHERE schemaname = 'public' AND pubname = $1);",
-                &[&publication],
-            )
-            .await?;
+        let query = &format!(
+            "ALTER PUBLICATION \"{}\" RENAME TO \"{}\";",
+            publication, new_name
+        );
 
-        let val = val
-            .iter()
-            .map(|val| val.get::<_, String>("tablename"))
-            .collect::<Vec<_>>();
-
-        log::trace!("These are table names: {val:?}");
-
-        Ok(val)
+        client.as_ref().execute(query, &[]).await.map(|_| ())
     }
 
     async fn update_pubs(

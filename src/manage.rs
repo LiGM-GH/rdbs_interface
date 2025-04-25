@@ -1,25 +1,22 @@
 //! This module contains Manage view and its messages
 //! Here a user can choose which exact view he wants: either  ManagePub or ManageSub
 
-use iced::{Alignment, Length, Task};
+use iced::{widget::text, Alignment, Color, Element, Length, Task};
 use tokio_postgres::Client;
 
-use crate::{
-    helpers,
-    widgets::event_catcher::{enter_catcher, event_catcher},
-};
+use crate::helpers;
 
 mod publication;
 mod subscription;
 
-pub trait AsClient: AsRef<Client> + Clone {}
+pub trait AsClient: AsRef<Client> + Clone + Send + Sync + 'static {}
 
-impl<T: AsRef<Client> + Clone> AsClient for T {}
+impl<T: AsRef<Client> + Clone + Send + Sync + 'static> AsClient for T {}
 
 #[derive(Debug)]
 pub struct View<DB: AsClient> {
     view: ViewVariant<DB>,
-    error: Option<&'static str>,
+    errmsg: Option<&'static str>,
 }
 
 #[derive(Debug)]
@@ -53,7 +50,7 @@ impl<DB: AsClient> View<DB> {
     pub fn new(client: DB) -> Self {
         Self {
             view: ViewVariant::Choose(client),
-            error: None,
+            errmsg: None,
         }
     }
 
@@ -66,13 +63,17 @@ impl<DB: AsClient> View<DB> {
     }
 
     fn choose_view(&self) -> iced::Element<'_, Message> {
-        let header = iced::widget::row![event_catcher(
+        let header = iced::widget::row![
             iced::widget::button("Back").on_press(Message::Back),
-            enter_catcher(Message::Back)
-        ),];
+        ];
+
+        let errmsg: Element<Message> = text(self.errmsg.unwrap_or(""))
+            .color(Color::from_rgba(1.0, 0.0, 0.0, 1.0))
+            .into();
 
         let main_view: iced::Element<_> =
             iced::widget::container(iced::widget::column![
+                helpers::centered_row(errmsg),
                 helpers::centered_row(iced::widget::text(
                     "OK, WHAT DO YOU DO? WHICH MANAGER ARE YOU?"
                 )),
@@ -151,7 +152,7 @@ impl<DB: AsClient> View<DB> {
                 value.update(message).map(Message::SubMsg)
             }
             Message::Error(val) => {
-                self.error = Some(val);
+                self.errmsg = Some(val);
                 Task::none()
             }
             Message::Back => {

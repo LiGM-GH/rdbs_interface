@@ -24,7 +24,7 @@ pub enum Message {
     Pubs(Arc<Vec<String>>),
     PubSelected(String),
     Error(&'static str),
-    AddTable,
+    DeleteTable,
     Back,
     Clear,
 }
@@ -83,9 +83,9 @@ impl<DB: AsClient> View<DB> {
             centered_row(errmsg),
             pub_list,
             table_list,
-            centered_row(button("Add table").on_press_maybe(
+            centered_row(button("Delete table").on_press_maybe(
                 if self.table_curr.is_some() {
-                    Some(Message::AddTable)
+                    Some(Message::DeleteTable)
                 } else {
                     None
                 }
@@ -134,7 +134,7 @@ impl<DB: AsClient> View<DB> {
             Message::Back => Task::done(Message::Error(
                 "This should have been propagated higher",
             )),
-            Message::AddTable => {
+            Message::DeleteTable => {
                 let Some(publication) = self.pub_curr.clone() else {
                     return Task::done(Message::Error(
                         "No publication provided",
@@ -146,13 +146,13 @@ impl<DB: AsClient> View<DB> {
                 };
 
                 Task::perform(
-                    Self::add_table(self.client.clone(), publication, table),
+                    Self::delete_table(self.client.clone(), publication, table),
                     |val| match val {
                         Ok(()) => Message::Clear,
                         Err(err) => {
                             log::error!("{err}");
 
-                            Message::Error("Couldn't add table")
+                            Message::Error("Couldn't delete table")
                         }
                     },
                 )
@@ -168,7 +168,7 @@ impl<DB: AsClient> View<DB> {
         }
     }
 
-    async fn add_table(
+    async fn delete_table(
         client: DB,
         publication: String,
         table: String,
@@ -177,7 +177,7 @@ impl<DB: AsClient> View<DB> {
             .as_ref()
             .execute(
                 &format!(
-                    "ALTER PUBLICATION \"{}\" ADD TABLE public.\"{}\";",
+                    "ALTER PUBLICATION \"{}\" DROP TABLE public.\"{}\";",
                     publication, table
                 ),
                 &[],
@@ -193,7 +193,7 @@ impl<DB: AsClient> View<DB> {
         let val = client
             .as_ref()
             .query(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' EXCEPT (SELECT tablename FROM pg_publication_tables WHERE schemaname = 'public' AND pubname = $1);",
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' INTERSECT (SELECT tablename FROM pg_publication_tables WHERE schemaname = 'public' AND pubname = $1);",
                 &[&publication],
             )
             .await?;

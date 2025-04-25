@@ -23,7 +23,7 @@ pub struct View {
     errmsg: Option<&'static str>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Message {
     Error(&'static str),
 
@@ -35,6 +35,34 @@ pub enum Message {
     Start,
 
     Connected(Arc<tokio_postgres::Client>),
+}
+
+impl std::fmt::Debug for Message {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Error(arg0) => f.debug_tuple("Error").field(arg0).finish(),
+            Self::DbNameChange(arg0) => {
+                f.debug_tuple("DbNameChange").field(arg0).finish()
+            }
+            Self::UsernameInput(arg0) => {
+                f.debug_tuple("UsernameInput").field(arg0).finish()
+            }
+            Self::PasswordInput(_arg0) => f
+                .debug_tuple("PasswordInput")
+                .field(&"***" as &dyn std::fmt::Debug)
+                .finish(),
+            Self::HostInput(arg0) => {
+                f.debug_tuple("HostInput").field(arg0).finish()
+            }
+            Self::PortInput(arg0) => {
+                f.debug_tuple("PortInput").field(arg0).finish()
+            }
+            Self::Start => write!(f, "Start"),
+            Self::Connected(arg0) => {
+                f.debug_tuple("Connected").field(arg0).finish()
+            }
+        }
+    }
 }
 
 impl View {

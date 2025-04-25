@@ -1,8 +1,14 @@
 //! This module contains Subscription view and its messages
 
-use iced::{Alignment, Length, Task, widget::column};
+use iced::{
+    Alignment, Color, Element, Length, Task,
+    widget::{column, text},
+};
 
-use crate::{helpers::centered_row, widgets::event_catcher::{enter_catcher, event_catcher}};
+use crate::{
+    helpers::centered_row,
+    widgets::event_catcher::{enter_catcher, event_catcher},
+};
 
 use super::AsClient;
 
@@ -55,8 +61,13 @@ impl<DB: AsClient> View<DB> {
                     enter_catcher(Message::Back)
                 )];
 
+                let errmsg: Element<Message> = text(self.errmsg.unwrap_or(""))
+                    .color(Color::from_rgba(1.0, 0.0, 0.0, 1.0))
+                    .into();
+
                 let main_view: iced::Element<_> = column![
                     iced::widget::vertical_space().width(Length::Fill),
+                    centered_row(errmsg),
                     centered_row(
                         iced::widget::button("Create subscription")
                             .on_press(Message::CreateSubscription)
