@@ -145,8 +145,8 @@ impl<DB: AsClient> View<DB> {
                     return Task::done(Message::Error("No table provided"));
                 };
 
-                Task::perform(
-                    Self::add_table(self.client.clone(), publication, table),
+                let add_task = Task::perform(
+                    Self::add_table(self.client.clone(), publication.clone(), table),
                     |val| match val {
                         Ok(()) => Message::Clear,
                         Err(err) => {
@@ -155,7 +155,20 @@ impl<DB: AsClient> View<DB> {
                             Message::Error("Couldn't add table")
                         }
                     },
-                )
+                );
+
+                let update_task = Task::perform(
+                    Self::update_tables(self.client.clone(), publication),
+                    |val| match val {
+                        Ok(val) => Message::Tables(Arc::new(val)),
+                        Err(err) => {
+                            log::error!("{err}");
+                            Message::Error("Couldn't update tables")
+                        }
+                    },
+                );
+
+                add_task.chain(update_task)
             }
             Message::Clear => {
                 self.table_curr = None;

@@ -22,7 +22,7 @@ enum ViewVariant<DB: AsClient> {
     Main(DB),
     AddTable(add_table::View<DB>),
     DeleteTable(delete_table::View<DB>),
-    RenameTable(rename_publication::View<DB>),
+    RenamePub(rename_publication::View<DB>),
 }
 
 #[derive(Clone, Debug)]
@@ -32,8 +32,8 @@ pub enum Message {
     AddTableMsg(add_table::Message),
     DeleteTable,
     DeleteTableMsg(delete_table::Message),
-    RenameTable,
-    RenameTableMsg(rename_publication::Message),
+    RenamePub,
+    RenamePubMsg(rename_publication::Message),
     Error(&'static str),
 }
 
@@ -43,7 +43,7 @@ impl<DB: AsClient> View<DB> {
             ViewVariant::Main(client) => client.clone(),
             ViewVariant::AddTable(view) => view.get_db(),
             ViewVariant::DeleteTable(view) => view.get_db(),
-            ViewVariant::RenameTable(view) => view.get_db(),
+            ViewVariant::RenamePub(view) => view.get_db(),
         }
     }
 
@@ -63,8 +63,8 @@ impl<DB: AsClient> View<DB> {
             ViewVariant::DeleteTable(ref view) => {
                 view.view().map(Message::DeleteTableMsg)
             }
-            ViewVariant::RenameTable(ref view) => {
-                view.view().map(Message::RenameTableMsg)
+            ViewVariant::RenamePub(ref view) => {
+                view.view().map(Message::RenamePubMsg)
             }
         }
     }
@@ -91,8 +91,8 @@ impl<DB: AsClient> View<DB> {
                     .width(Length::FillPortion(8)),
             ),
             centered_row(
-                iced::widget::button("Rename table")
-                    .on_press(Message::RenameTable)
+                iced::widget::button("Rename publication")
+                    .on_press(Message::RenamePub)
                     .width(Length::FillPortion(8)),
             ),
             iced::widget::vertical_space().width(Length::Fill),
@@ -175,7 +175,7 @@ impl<DB: AsClient> View<DB> {
 
                 view.update(msg).map(Message::DeleteTableMsg)
             }
-            Message::RenameTable => {
+            Message::RenamePub => {
                 let ViewVariant::Main(db) = &self.view else {
                     return Task::done(Message::Error("DB is probably uninit"));
                 };
@@ -183,12 +183,12 @@ impl<DB: AsClient> View<DB> {
                 self.errmsg = None;
                 let (view, task) = rename_publication::View::new(db.clone());
 
-                self.view = ViewVariant::RenameTable(view);
+                self.view = ViewVariant::RenamePub(view);
 
-                task.map(Message::RenameTableMsg)
+                task.map(Message::RenamePubMsg)
             }
-            Message::RenameTableMsg(rename_publication::Message::Back) => {
-                let ViewVariant::RenameTable(ref mut view) = self.view else {
+            Message::RenamePubMsg(rename_publication::Message::Back) => {
+                let ViewVariant::RenamePub(ref mut view) = self.view else {
                     return Task::done(Message::Error("Something happened"));
                 };
 
@@ -196,14 +196,14 @@ impl<DB: AsClient> View<DB> {
 
                 Task::none()
             }
-            Message::RenameTableMsg(msg) => {
-                let ViewVariant::RenameTable(view) = &mut self.view else {
+            Message::RenamePubMsg(msg) => {
+                let ViewVariant::RenamePub(view) = &mut self.view else {
                     return Task::done(Message::Error(
                         "Not in the right view to do that!",
                     ));
                 };
 
-                view.update(msg).map(Message::RenameTableMsg)
+                view.update(msg).map(Message::RenamePubMsg)
             }
         }
     }

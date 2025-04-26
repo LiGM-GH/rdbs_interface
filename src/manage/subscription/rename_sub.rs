@@ -10,8 +10,8 @@ use crate::{helpers::centered_row, manage::AsClient};
 #[derive(Debug)]
 pub struct View<DB: AsClient> {
     client: DB,
-    pub_list: Arc<Vec<String>>,
-    pub_curr: Option<String>,
+    sub_list: Arc<Vec<String>>,
+    sub_curr: Option<String>,
     new_name: String,
     errmsg: Option<&'static str>,
 }
@@ -19,10 +19,10 @@ pub struct View<DB: AsClient> {
 #[derive(Clone, Debug)]
 pub enum Message {
     NewName(String),
-    Pubs(Arc<Vec<String>>),
-    PubSelected(String),
+    Subs(Arc<Vec<String>>),
+    SubSelected(String),
     Error(&'static str),
-    RenamePub,
+    RenameSub,
     Back,
     Clear,
 }
@@ -33,12 +33,12 @@ impl<DB: AsClient> View<DB> {
     }
 
     pub fn new(client: DB) -> (Self, Task<Message>) {
-        let pubs_task =
-            Task::perform(Self::update_pubs(client.clone()), |val| match val {
-                Ok(val) => Message::Pubs(Arc::new(val)),
+        let subs_task =
+            Task::perform(Self::update_subs(client.clone()), |val| match val {
+                Ok(val) => Message::Subs(Arc::new(val)),
                 Err(err) => {
                     log::error!("{err}");
-                    Message::Error("Error occurred while getting publications")
+                    Message::Error("Error occurred while getting subscriptions")
                 }
             });
 
@@ -46,25 +46,25 @@ impl<DB: AsClient> View<DB> {
             Self {
                 client,
                 errmsg: None,
-                pub_list: Arc::new(Vec::new()),
-                pub_curr: None,
+                sub_list: Arc::new(Vec::new()),
+                sub_curr: None,
                 new_name: String::new(),
             },
-            pubs_task,
+            subs_task,
         )
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let options = self.pub_list.as_slice();
+        let options = self.sub_list.as_slice();
 
         let header = iced::widget::row![
             iced::widget::button("Back").on_press(Message::Back),
         ];
 
-        log::trace!("pub_list: {:?}", self.pub_list);
+        log::trace!("sub_list: {:?}", self.sub_list);
 
-        let pub_list =
-            pick_list(options, self.pub_curr.clone(), Message::PubSelected);
+        let sub_list =
+            pick_list(options, self.sub_curr.clone(), Message::SubSelected);
 
         let errmsg: Element<Message> = text(self.errmsg.unwrap_or(""))
             .color(Color::from_rgba(1.0, 0.0, 0.0, 1.0))
@@ -73,16 +73,16 @@ impl<DB: AsClient> View<DB> {
         let main_view: iced::Element<_> = column![
             vertical_space().height(Length::FillPortion(1)),
             centered_row(errmsg),
-            pub_list,
+            sub_list,
             centered_row(
                 text_input("New name", &self.new_name)
                     .on_input(Message::NewName)
             ),
-            centered_row(button("Rename publication").on_press_maybe(
+            centered_row(button("Rename subscription").on_press_maybe(
                 if self.new_name.is_empty() {
                     None
                 } else {
-                    Some(Message::RenamePub)
+                    Some(Message::RenameSub)
                 }
             )),
             vertical_space().height(Length::FillPortion(1)),
@@ -105,28 +105,28 @@ impl<DB: AsClient> View<DB> {
                 self.new_name = name;
                 Task::none()
             }
-            Message::Pubs(pubs) => {
-                self.pub_list = pubs;
+            Message::Subs(subs) => {
+                self.sub_list = subs;
                 Task::none()
             }
-            Message::PubSelected(publication) => {
-                self.pub_curr = Some(publication.clone());
+            Message::SubSelected(subscription) => {
+                self.sub_curr = Some(subscription.clone());
                 Task::none()
             }
             Message::Back => Task::done(Message::Error(
                 "This should have been propagated higher",
             )),
-            Message::RenamePub => {
-                let Some(publication) = self.pub_curr.clone() else {
+            Message::RenameSub => {
+                let Some(subscription) = self.sub_curr.clone() else {
                     return Task::done(Message::Error(
-                        "No publication provided",
+                        "No subscription provided",
                     ));
                 };
 
                 Task::perform(
-                    Self::rename_publication(
+                    Self::rename_subscription(
                         self.client.clone(),
-                        publication,
+                        subscription,
                         self.new_name.clone(),
                     ),
                     |val| match val {
@@ -134,22 +134,22 @@ impl<DB: AsClient> View<DB> {
                         Err(err) => {
                             log::error!("{err}");
 
-                            Message::Error("Couldn't rename publication")
+                            Message::Error("Couldn't rename subscription")
                         }
                     },
                 )
             }
             Message::Clear => {
-                self.pub_curr = None;
+                self.sub_curr = None;
                 self.errmsg = None;
                 self.new_name = String::new();
 
-                Task::perform(Self::update_pubs(self.client.clone()), |val| {
+                Task::perform(Self::update_subs(self.client.clone()), |val| {
                     match val {
-                        Ok(val) => Message::Pubs(Arc::new(val)),
+                        Ok(val) => Message::Subs(Arc::new(val)),
                         Err(err) => {
                             log::error!("{err}");
-                            Message::Error("Couldn't update publications")
+                            Message::Error("Couldn't update subscriptions")
                         }
                     }
                 })
@@ -157,32 +157,32 @@ impl<DB: AsClient> View<DB> {
         }
     }
 
-    async fn rename_publication(
+    async fn rename_subscription(
         client: DB,
-        publication: String,
+        subscription: String,
         new_name: String,
     ) -> Result<(), tokio_postgres::Error> {
         let new_name = pg_escape::quote_identifier(&new_name);
 
         let query = &format!(
-            "ALTER PUBLICATION \"{}\" RENAME TO \"{}\";",
-            publication, new_name
+            "ALTER SUBSCRIPTION \"{}\" RENAME TO \"{}\";",
+            subscription, new_name
         );
 
         client.as_ref().execute(query, &[]).await.map(|_| ())
     }
 
-    async fn update_pubs(
+    async fn update_subs(
         client: DB,
     ) -> Result<Vec<String>, tokio_postgres::Error> {
         let val = client
             .as_ref()
-            .query("SELECT pubname FROM pg_publication;", &[])
+            .query("SELECT subname FROM pg_subscription;", &[])
             .await?;
 
         let val = val
             .iter()
-            .map(|val| val.get::<_, String>("pubname"))
+            .map(|val| val.get::<_, String>("subname"))
             .collect::<Vec<_>>();
 
         Ok(val)

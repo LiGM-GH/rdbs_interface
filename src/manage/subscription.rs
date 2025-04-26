@@ -12,7 +12,9 @@ use crate::{
 
 use super::AsClient;
 
-mod delete_subscription;
+mod disable_sub;
+mod enable_sub;
+mod rename_sub;
 
 #[derive(Debug)]
 pub struct View<DB: AsClient> {
@@ -23,14 +25,20 @@ pub struct View<DB: AsClient> {
 #[derive(Debug)]
 enum ViewVariant<DB: AsClient> {
     Main(DB),
-    CreateSubscription(delete_subscription::View<DB>),
+    EnableSub(enable_sub::View<DB>),
+    DisableSub(disable_sub::View<DB>),
+    RenameSub(rename_sub::View<DB>),
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {
     Back,
-    CreateSubscription,
-    CreateSub(delete_subscription::Message),
+    EnableSubscription,
+    EnableSub(enable_sub::Message),
+    DisableSubscription,
+    DisableSub(disable_sub::Message),
+    RenameSubscription,
+    RenameSub(rename_sub::Message),
     Error(&'static str),
 }
 
@@ -38,7 +46,9 @@ impl<DB: AsClient> View<DB> {
     pub fn get_db(&self) -> DB {
         match &self.view {
             ViewVariant::Main(client) => client.clone(),
-            ViewVariant::CreateSubscription(view) => view.get_db(),
+            ViewVariant::EnableSub(view) => view.get_db(),
+            ViewVariant::DisableSub(view) => view.get_db(),
+            ViewVariant::RenameSub(view) => view.get_db(),
         }
     }
 
@@ -69,8 +79,18 @@ impl<DB: AsClient> View<DB> {
                     iced::widget::vertical_space().width(Length::Fill),
                     centered_row(errmsg),
                     centered_row(
-                        iced::widget::button("Create subscription")
-                            .on_press(Message::CreateSubscription)
+                        iced::widget::button("Enable subscription")
+                            .on_press(Message::EnableSubscription)
+                            .width(Length::FillPortion(8)),
+                    ),
+                    centered_row(
+                        iced::widget::button("Disable subscription")
+                            .on_press(Message::DisableSubscription)
+                            .width(Length::FillPortion(8)),
+                    ),
+                    centered_row(
+                        iced::widget::button("Rename subscription")
+                            .on_press(Message::RenameSubscription)
                             .width(Length::FillPortion(8)),
                     ),
                     iced::widget::vertical_space().width(Length::Fill),
@@ -82,8 +102,14 @@ impl<DB: AsClient> View<DB> {
 
                 iced::widget::column![header, main_view].into()
             }
-            ViewVariant::CreateSubscription(ref sub) => {
-                sub.view().map(Message::CreateSub)
+            ViewVariant::EnableSub(ref view) => {
+                view.view().map(Message::EnableSub)
+            }
+            ViewVariant::DisableSub(ref view) => {
+                view.view().map(Message::DisableSub)
+            }
+            ViewVariant::RenameSub(ref view) => {
+                view.view().map(Message::RenameSub)
             }
         }
     }
@@ -93,24 +119,89 @@ impl<DB: AsClient> View<DB> {
             Message::Back => {
                 Self::err("This should have been propagated higher")
             }
-            Message::CreateSubscription => {
+            Message::EnableSubscription => {
                 let ViewVariant::Main(db) = &self.view else {
                     return Task::done(Message::Error("DB is probably uninit"));
                 };
-                self.view = ViewVariant::CreateSubscription(
-                    delete_subscription::View::new(db.clone()),
-                );
-                Task::none()
+                let (view, task) = enable_sub::View::new(db.clone());
+                self.view = ViewVariant::EnableSub(view);
+
+                task.map(Message::EnableSub)
             }
-            Message::CreateSub(msg) => {
-                let ViewVariant::CreateSubscription(view) = &mut self.view
-                else {
+            Message::EnableSub(enable_sub::Message::Back) => {
+                let ViewVariant::EnableSub(view) = &mut self.view else {
                     return Task::done(Message::Error(
                         "Couldn't create subscription",
                     ));
                 };
 
-                view.update(msg).map(Message::CreateSub)
+                self.view = ViewVariant::Main(view.get_db().clone());
+                Task::none()
+            }
+            Message::EnableSub(msg) => {
+                let ViewVariant::EnableSub(view) = &mut self.view else {
+                    return Task::done(Message::Error(
+                        "Couldn't create subscription",
+                    ));
+                };
+
+                view.update(msg).map(Message::EnableSub)
+            }
+            Message::DisableSubscription => {
+                let ViewVariant::Main(db) = &self.view else {
+                    return Task::done(Message::Error("DB is probably uninit"));
+                };
+                let (view, task) = disable_sub::View::new(db.clone());
+                self.view = ViewVariant::DisableSub(view);
+
+                task.map(Message::DisableSub)
+            }
+            Message::DisableSub(disable_sub::Message::Back) => {
+                let ViewVariant::DisableSub(view) = &mut self.view else {
+                    return Task::done(Message::Error(
+                        "Couldn't create subscription",
+                    ));
+                };
+
+                self.view = ViewVariant::Main(view.get_db().clone());
+                Task::none()
+            }
+            Message::DisableSub(msg) => {
+                let ViewVariant::DisableSub(view) = &mut self.view else {
+                    return Task::done(Message::Error(
+                        "Couldn't create subscription",
+                    ));
+                };
+
+                view.update(msg).map(Message::DisableSub)
+            }
+            Message::RenameSubscription => {
+                let ViewVariant::Main(db) = &self.view else {
+                    return Task::done(Message::Error("DB is probably uninit"));
+                };
+                let (view, task) = rename_sub::View::new(db.clone());
+                self.view = ViewVariant::RenameSub(view);
+
+                task.map(Message::RenameSub)
+            }
+            Message::RenameSub(rename_sub::Message::Back) => {
+                let ViewVariant::RenameSub(view) = &mut self.view else {
+                    return Task::done(Message::Error(
+                        "Couldn't create subscription",
+                    ));
+                };
+
+                self.view = ViewVariant::Main(view.get_db().clone());
+                Task::none()
+            }
+            Message::RenameSub(msg) => {
+                let ViewVariant::RenameSub(view) = &mut self.view else {
+                    return Task::done(Message::Error(
+                        "Couldn't create subscription",
+                    ));
+                };
+
+                view.update(msg).map(Message::RenameSub)
             }
             Message::Error(msg) => {
                 self.errmsg = Some(msg);

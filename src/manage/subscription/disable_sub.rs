@@ -10,21 +10,17 @@ use crate::{helpers::centered_row, manage::AsClient};
 #[derive(Debug)]
 pub struct View<DB: AsClient> {
     client: DB,
-    table_list: Arc<Vec<String>>,
-    table_curr: Option<String>,
-    pub_list: Arc<Vec<String>>,
-    pub_curr: Option<String>,
+    sub_list: Arc<Vec<String>>,
+    sub_curr: Option<String>,
     errmsg: Option<&'static str>,
 }
 
 #[derive(Clone, Debug)]
 pub enum Message {
-    Tables(Arc<Vec<String>>),
-    TableSelected(String),
-    Pubs(Arc<Vec<String>>),
-    PubSelected(String),
+    Subs(Arc<Vec<String>>),
+    SubSelected(String),
     Error(&'static str),
-    DeleteTable,
+    DisableSub,
     Back,
     Clear,
 }
@@ -36,8 +32,8 @@ impl<DB: AsClient> View<DB> {
 
     pub fn new(client: DB) -> (Self, Task<Message>) {
         let pubs_task =
-            Task::perform(Self::update_pubs(client.clone()), |val| match val {
-                Ok(val) => Message::Pubs(Arc::new(val)),
+            Task::perform(Self::update_subs(client.clone()), |val| match val {
+                Ok(val) => Message::Subs(Arc::new(val)),
                 Err(err) => {
                     log::error!("{err}");
                     Message::Error("Error occurred while getting publications")
@@ -47,32 +43,25 @@ impl<DB: AsClient> View<DB> {
         (
             Self {
                 client,
-                table_list: Arc::new(Vec::new()),
-                table_curr: None,
                 errmsg: None,
-                pub_list: Arc::new(Vec::new()),
-                pub_curr: None,
+                sub_list: Arc::new(Vec::new()),
+                sub_curr: None,
             },
             pubs_task,
         )
     }
 
     pub fn view(&self) -> Element<'_, Message> {
-        let options = self.pub_list.as_slice();
+        let options = self.sub_list.as_slice();
 
         let header = iced::widget::row![
             iced::widget::button("Back").on_press(Message::Back),
         ];
 
-        log::trace!("pub_list: {:?}", self.pub_list);
+        log::trace!("pub_list: {:?}", self.sub_list);
 
         let pub_list =
-            pick_list(options, self.pub_curr.clone(), Message::PubSelected);
-
-        let options = self.table_list.as_slice();
-
-        let table_list =
-            pick_list(options, self.table_curr.clone(), Message::TableSelected);
+            pick_list(options, self.sub_curr.clone(), Message::SubSelected);
 
         let errmsg: Element<Message> = text(self.errmsg.unwrap_or(""))
             .color(Color::from_rgba(1.0, 0.0, 0.0, 1.0))
@@ -82,10 +71,9 @@ impl<DB: AsClient> View<DB> {
             vertical_space().height(Length::FillPortion(1)),
             centered_row(errmsg),
             pub_list,
-            table_list,
-            centered_row(button("Delete table").on_press_maybe(
-                if self.table_curr.is_some() {
-                    Some(Message::DeleteTable)
+            centered_row(button("Disable subscription").on_press_maybe(
+                if self.sub_curr.is_some() {
+                    Some(Message::DisableSub)
                 } else {
                     None
                 }
@@ -106,24 +94,16 @@ impl<DB: AsClient> View<DB> {
                 self.errmsg = Some(err);
                 Task::none()
             }
-            Message::Tables(tables) => {
-                self.table_list = tables;
+            Message::Subs(pubs) => {
+                self.sub_list = pubs;
                 Task::none()
             }
-            Message::TableSelected(table) => {
-                self.table_curr = Some(table);
-                Task::none()
-            }
-            Message::Pubs(pubs) => {
-                self.pub_list = pubs;
-                Task::none()
-            }
-            Message::PubSelected(publication) => {
-                self.pub_curr = Some(publication.clone());
+            Message::SubSelected(sub) => {
+                self.sub_curr = Some(sub.clone());
                 Task::perform(
-                    Self::update_tables(self.client.clone(), publication),
+                    Self::update_subs(self.client.clone()),
                     |val| match val {
-                        Ok(val) => Message::Tables(Arc::new(val)),
+                        Ok(val) => Message::Subs(Arc::new(val)),
                         Err(err) => {
                             log::error!("{err}");
                             Message::Error("Couldn't update tables")
@@ -134,33 +114,29 @@ impl<DB: AsClient> View<DB> {
             Message::Back => Task::done(Message::Error(
                 "This should have been propagated higher",
             )),
-            Message::DeleteTable => {
-                let Some(publication) = self.pub_curr.clone() else {
+            Message::DisableSub => {
+                let Some(sub) = self.sub_curr.clone() else {
                     return Task::done(Message::Error(
                         "No publication provided",
                     ));
                 };
 
-                let Some(table) = self.table_curr.clone() else {
-                    return Task::done(Message::Error("No table provided"));
-                };
-
-                let delete_task = Task::perform(
-                    Self::delete_table(self.client.clone(), publication.clone(), table),
+                let disable_task = Task::perform(
+                    Self::disable_sub(self.client.clone(), sub),
                     |val| match val {
                         Ok(()) => Message::Clear,
                         Err(err) => {
                             log::error!("{err}");
 
-                            Message::Error("Couldn't delete table")
+                            Message::Error("Couldn't add table")
                         }
                     },
                 );
 
                 let update_task = Task::perform(
-                    Self::update_tables(self.client.clone(), publication),
+                    Self::update_subs(self.client.clone()),
                     |val| match val {
-                        Ok(val) => Message::Tables(Arc::new(val)),
+                        Ok(val) => Message::Subs(Arc::new(val)),
                         Err(err) => {
                             log::error!("{err}");
                             Message::Error("Couldn't update tables")
@@ -168,12 +144,10 @@ impl<DB: AsClient> View<DB> {
                     },
                 );
 
-                delete_task.chain(update_task)
+                disable_task.chain(update_task)
             }
             Message::Clear => {
-                self.table_curr = None;
-                self.pub_curr = None;
-                self.table_list = Arc::new(Vec::new());
+                self.sub_curr = None;
                 self.errmsg = None;
 
                 Task::none()
@@ -181,57 +155,28 @@ impl<DB: AsClient> View<DB> {
         }
     }
 
-    async fn delete_table(
+    async fn disable_sub(
         client: DB,
-        publication: String,
-        table: String,
+        sub: String,
     ) -> Result<(), tokio_postgres::Error> {
         client
             .as_ref()
-            .execute(
-                &format!(
-                    "ALTER PUBLICATION \"{}\" DROP TABLE public.\"{}\";",
-                    publication, table
-                ),
-                &[],
-            )
+            .execute(&format!("ALTER SUBSCRIPTION \"{}\" DISABLE;", sub), &[])
             .await
             .map(|_| ())
     }
 
-    async fn update_tables(
-        client: DB,
-        publication: String,
-    ) -> Result<Vec<String>, tokio_postgres::Error> {
-        let val = client
-            .as_ref()
-            .query(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' INTERSECT (SELECT tablename FROM pg_publication_tables WHERE schemaname = 'public' AND pubname = $1);",
-                &[&publication],
-            )
-            .await?;
-
-        let val = val
-            .iter()
-            .map(|val| val.get::<_, String>("tablename"))
-            .collect::<Vec<_>>();
-
-        log::trace!("These are table names: {val:?}");
-
-        Ok(val)
-    }
-
-    async fn update_pubs(
+    async fn update_subs(
         client: DB,
     ) -> Result<Vec<String>, tokio_postgres::Error> {
         let val = client
             .as_ref()
-            .query("SELECT pubname FROM pg_publication;", &[])
+            .query("SELECT subname FROM pg_subscription WHERE subenabled = 't';", &[])
             .await?;
 
         let val = val
             .iter()
-            .map(|val| val.get::<_, String>("pubname"))
+            .map(|val| val.get::<_, String>("subname"))
             .collect::<Vec<_>>();
 
         Ok(val)
