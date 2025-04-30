@@ -46,7 +46,7 @@ pub fn event_catcher<'a, Message, Fun: FunForMessage<Message = Message>>(
 impl<'a, Message, Fun: FunForMessage<Message = Message>>
     EventCatcher<'a, Message, Fun>
 {
-    pub fn new(inner: iced::Element<'a, Message>, fun: Fun) -> Self {
+    pub const fn new(inner: iced::Element<'a, Message>, fun: Fun) -> Self {
         Self { inner, fun }
     }
 }
@@ -120,8 +120,8 @@ impl<Message, Fun: FunForMessage<Message = Message>>
         self.inner.as_widget().tag()
     }
 
-    fn diff(&self, _tree: &mut iced::advanced::widget::Tree) {
-        self.inner.as_widget().diff(_tree)
+    fn diff(&self, tree: &mut iced::advanced::widget::Tree) {
+        self.inner.as_widget().diff(tree);
     }
 
     fn state(&self) -> iced::advanced::widget::tree::State {

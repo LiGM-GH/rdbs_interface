@@ -5,7 +5,11 @@ use iced::{
     widget::{button, column, text},
 };
 
-use crate::{helpers::centered_row, manage::AsClient};
+use crate::{
+    helpers::centered_row,
+    manage::AsClient,
+    traits::{GetDb, Viewable},
+};
 
 mod add_table;
 mod delete_table;
@@ -37,24 +41,21 @@ pub enum Message {
     Error(&'static str),
 }
 
-impl<DB: AsClient> View<DB> {
-    pub fn get_db(&self) -> DB {
+impl<DB: AsClient> Viewable for View<DB> {
+    type Message = Message;
+
+    fn back(&self) -> Message {
         match &self.view {
-            ViewVariant::Main(client) => client.clone(),
-            ViewVariant::AddTable(view) => view.get_db(),
-            ViewVariant::DeleteTable(view) => view.get_db(),
-            ViewVariant::RenamePub(view) => view.get_db(),
+            ViewVariant::Main(_) => Message::Back,
+            ViewVariant::AddTable(view) => Message::AddTableMsg(view.back()),
+            ViewVariant::DeleteTable(view) => {
+                Message::DeleteTableMsg(view.back())
+            }
+            ViewVariant::RenamePub(view) => Message::RenamePubMsg(view.back()),
         }
     }
 
-    pub fn new(client: DB) -> Self {
-        Self {
-            view: ViewVariant::Main(client),
-            errmsg: None,
-        }
-    }
-
-    pub fn view(&self) -> iced::Element<'_, Message> {
+    fn view(&self) -> iced::Element<'_, Message> {
         match self.view {
             ViewVariant::Main(_) => self.main_view(),
             ViewVariant::AddTable(ref view) => {
@@ -66,6 +67,127 @@ impl<DB: AsClient> View<DB> {
             ViewVariant::RenamePub(ref view) => {
                 view.view().map(Message::RenamePubMsg)
             }
+        }
+    }
+
+    fn update(&mut self, msg: Message) -> Task<Message> {
+        match msg {
+            Message::Back => {
+                Self::err("This should have been propagated higher")
+            }
+            Message::AddTable => {
+                let ViewVariant::Main(db) = &self.view else {
+                    return Task::done(Message::Error("DB is probably uninit"));
+                };
+
+                let (view, task) = add_table::View::new(db.clone());
+
+                self.view = ViewVariant::AddTable(view);
+
+                task.map(Message::AddTableMsg)
+            }
+            Message::AddTableMsg(add_table::Message::Back) => {
+                let ViewVariant::AddTable(ref mut view) = self.view else {
+                    return Task::done(Message::Error("Something happened"));
+                };
+
+                self.view = ViewVariant::Main(view.get_db());
+
+                Task::none()
+            }
+            Message::AddTableMsg(msg) => {
+                let ViewVariant::AddTable(ref mut view) = self.view else {
+                    return Task::done(Message::Error("Couldn't add table"));
+                };
+
+                view.update(msg).map(Message::AddTableMsg)
+            }
+            Message::Error(msg) => {
+                self.errmsg = Some(msg);
+                Task::none()
+            }
+            Message::DeleteTable => {
+                let ViewVariant::Main(db) = &self.view else {
+                    return Task::done(Message::Error("DB is probably uninit"));
+                };
+
+                self.errmsg = None;
+                let (view, task) = delete_table::View::new(db.clone());
+
+                self.view = ViewVariant::DeleteTable(view);
+
+                task.map(Message::DeleteTableMsg)
+            }
+            Message::DeleteTableMsg(delete_table::Message::Back) => {
+                let ViewVariant::DeleteTable(ref mut view) = self.view else {
+                    return Task::done(Message::Error("Something happened"));
+                };
+
+                self.view = ViewVariant::Main(view.get_db());
+
+                Task::none()
+            }
+            Message::DeleteTableMsg(msg) => {
+                let ViewVariant::DeleteTable(view) = &mut self.view else {
+                    return Task::done(Message::Error(
+                        "Not in the right view to do that!",
+                    ));
+                };
+
+                view.update(msg).map(Message::DeleteTableMsg)
+            }
+            Message::RenamePub => {
+                let ViewVariant::Main(db) = &self.view else {
+                    return Task::done(Message::Error("DB is probably uninit"));
+                };
+
+                self.errmsg = None;
+                let (view, task) = rename_publication::View::new(db.clone());
+
+                self.view = ViewVariant::RenamePub(view);
+
+                task.map(Message::RenamePubMsg)
+            }
+            Message::RenamePubMsg(rename_publication::Message::Back) => {
+                let ViewVariant::RenamePub(ref mut view) = self.view else {
+                    return Task::done(Message::Error("Something happened"));
+                };
+
+                self.view = ViewVariant::Main(view.get_db());
+
+                Task::none()
+            }
+            Message::RenamePubMsg(msg) => {
+                let ViewVariant::RenamePub(view) = &mut self.view else {
+                    return Task::done(Message::Error(
+                        "Not in the right view to do that!",
+                    ));
+                };
+
+                view.update(msg).map(Message::RenamePubMsg)
+            }
+        }
+    }
+}
+
+impl<DB: AsClient> GetDb for View<DB> {
+    type DB = DB;
+
+    fn get_db(&self) -> DB {
+        match &self.view {
+            ViewVariant::Main(client) => client.clone(),
+            ViewVariant::AddTable(view) => view.get_db(),
+            ViewVariant::DeleteTable(view) => view.get_db(),
+            ViewVariant::RenamePub(view) => view.get_db(),
+        }
+    }
+}
+
+impl<DB: AsClient> View<DB> {
+    pub const fn new(client: DB) -> Self {
+        Self {
+            view: ViewVariant::Main(client),
+            errmsg: None,
         }
     }
 
@@ -107,104 +229,5 @@ impl<DB: AsClient> View<DB> {
 
     fn err(msg: &'static str) -> Task<Message> {
         Task::done(Message::Error(msg))
-    }
-
-    pub fn update(&mut self, msg: Message) -> Task<Message> {
-        match msg {
-            Message::Back => {
-                Self::err("This should have been propagated higher")
-            }
-            Message::AddTable => {
-                let ViewVariant::Main(db) = &self.view else {
-                    return Task::done(Message::Error("DB is probably uninit"));
-                };
-
-                let (view, task) = add_table::View::new(db.clone());
-
-                self.view = ViewVariant::AddTable(view);
-
-                task.map(Message::AddTableMsg)
-            }
-            Message::AddTableMsg(add_table::Message::Back) => {
-                let ViewVariant::AddTable(ref mut view) = self.view else {
-                    return Task::done(Message::Error("Something happened"));
-                };
-
-                self.view = ViewVariant::Main(view.get_db().clone());
-
-                Task::none()
-            }
-            Message::AddTableMsg(msg) => {
-                let ViewVariant::AddTable(ref mut view) = self.view else {
-                    return Task::done(Message::Error("Couldn't add table"));
-                };
-
-                view.update(msg).map(Message::AddTableMsg)
-            }
-            Message::Error(msg) => {
-                self.errmsg = Some(msg);
-                Task::none()
-            }
-            Message::DeleteTable => {
-                let ViewVariant::Main(db) = &self.view else {
-                    return Task::done(Message::Error("DB is probably uninit"));
-                };
-
-                self.errmsg = None;
-                let (view, task) = delete_table::View::new(db.clone());
-
-                self.view = ViewVariant::DeleteTable(view);
-
-                task.map(Message::DeleteTableMsg)
-            }
-            Message::DeleteTableMsg(delete_table::Message::Back) => {
-                let ViewVariant::DeleteTable(ref mut view) = self.view else {
-                    return Task::done(Message::Error("Something happened"));
-                };
-
-                self.view = ViewVariant::Main(view.get_db().clone());
-
-                Task::none()
-            }
-            Message::DeleteTableMsg(msg) => {
-                let ViewVariant::DeleteTable(view) = &mut self.view else {
-                    return Task::done(Message::Error(
-                        "Not in the right view to do that!",
-                    ));
-                };
-
-                view.update(msg).map(Message::DeleteTableMsg)
-            }
-            Message::RenamePub => {
-                let ViewVariant::Main(db) = &self.view else {
-                    return Task::done(Message::Error("DB is probably uninit"));
-                };
-
-                self.errmsg = None;
-                let (view, task) = rename_publication::View::new(db.clone());
-
-                self.view = ViewVariant::RenamePub(view);
-
-                task.map(Message::RenamePubMsg)
-            }
-            Message::RenamePubMsg(rename_publication::Message::Back) => {
-                let ViewVariant::RenamePub(ref mut view) = self.view else {
-                    return Task::done(Message::Error("Something happened"));
-                };
-
-                self.view = ViewVariant::Main(view.get_db().clone());
-
-                Task::none()
-            }
-            Message::RenamePubMsg(msg) => {
-                let ViewVariant::RenamePub(view) = &mut self.view else {
-                    return Task::done(Message::Error(
-                        "Not in the right view to do that!",
-                    ));
-                };
-
-                view.update(msg).map(Message::RenamePubMsg)
-            }
-        }
     }
 }

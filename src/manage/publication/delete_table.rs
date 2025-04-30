@@ -5,7 +5,7 @@ use iced::{
     widget::{button, column, pick_list, text, vertical_space},
 };
 
-use crate::{helpers::centered_row, manage::AsClient};
+use crate::{helpers::centered_row, manage::AsClient, traits::{GetDb, Viewable}};
 
 #[derive(Debug)]
 pub struct View<DB: AsClient> {
@@ -29,35 +29,14 @@ pub enum Message {
     Clear,
 }
 
-impl<DB: AsClient> View<DB> {
-    pub fn get_db(&self) -> DB {
-        self.client.clone()
+impl<DB: AsClient> Viewable for View<DB> {
+    type Message = Message;
+
+    fn back(&self) -> Message {
+        Message::Back
     }
 
-    pub fn new(client: DB) -> (Self, Task<Message>) {
-        let pubs_task =
-            Task::perform(Self::update_pubs(client.clone()), |val| match val {
-                Ok(val) => Message::Pubs(Arc::new(val)),
-                Err(err) => {
-                    log::error!("{err}");
-                    Message::Error("Error occurred while getting publications")
-                }
-            });
-
-        (
-            Self {
-                client,
-                table_list: Arc::new(Vec::new()),
-                table_curr: None,
-                errmsg: None,
-                pub_list: Arc::new(Vec::new()),
-                pub_curr: None,
-            },
-            pubs_task,
-        )
-    }
-
-    pub fn view(&self) -> Element<'_, Message> {
+    fn view(&self) -> Element<'_, Message> {
         let options = self.pub_list.as_slice();
 
         let header = iced::widget::row![
@@ -100,7 +79,7 @@ impl<DB: AsClient> View<DB> {
         column![header, main_view].into()
     }
 
-    pub fn update(&mut self, msg: Message) -> Task<Message> {
+    fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::Error(err) => {
                 self.errmsg = Some(err);
@@ -180,6 +159,41 @@ impl<DB: AsClient> View<DB> {
             }
         }
     }
+}
+
+
+impl<DB: AsClient> GetDb for View<DB> {
+    type DB = DB;
+
+    fn get_db(&self) -> DB {
+        self.client.clone()
+    }
+}
+
+impl<DB: AsClient> View<DB> {
+    pub fn new(client: DB) -> (Self, Task<Message>) {
+        let pubs_task =
+            Task::perform(Self::update_pubs(client.clone()), |val| match val {
+                Ok(val) => Message::Pubs(Arc::new(val)),
+                Err(err) => {
+                    log::error!("{err}");
+                    Message::Error("Error occurred while getting publications")
+                }
+            });
+
+        (
+            Self {
+                client,
+                table_list: Arc::new(Vec::new()),
+                table_curr: None,
+                errmsg: None,
+                pub_list: Arc::new(Vec::new()),
+                pub_curr: None,
+            },
+            pubs_task,
+        )
+    }
+
 
     async fn delete_table(
         client: DB,

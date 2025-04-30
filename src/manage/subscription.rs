@@ -7,6 +7,7 @@ use iced::{
 
 use crate::{
     helpers::centered_row,
+    traits::{GetDb, Viewable},
     widgets::event_catcher::{enter_catcher, event_catcher},
 };
 
@@ -42,28 +43,19 @@ pub enum Message {
     Error(&'static str),
 }
 
-impl<DB: AsClient> View<DB> {
-    pub fn get_db(&self) -> DB {
+impl<DB: AsClient> Viewable for View<DB> {
+    type Message = Message;
+
+    fn back(&self) -> Message {
         match &self.view {
-            ViewVariant::Main(client) => client.clone(),
-            ViewVariant::EnableSub(view) => view.get_db(),
-            ViewVariant::DisableSub(view) => view.get_db(),
-            ViewVariant::RenameSub(view) => view.get_db(),
+            ViewVariant::Main(_) => Message::Back,
+            ViewVariant::EnableSub(view) => Message::EnableSub(view.back()),
+            ViewVariant::DisableSub(view) => Message::DisableSub(view.back()),
+            ViewVariant::RenameSub(view) => Message::RenameSub(view.back()),
         }
     }
 
-    fn err(msg: &'static str) -> Task<Message> {
-        Task::done(Message::Error(msg))
-    }
-
-    pub fn new(client: DB) -> Self {
-        Self {
-            view: ViewVariant::Main(client),
-            errmsg: None,
-        }
-    }
-
-    pub fn view(&self) -> iced::Element<'_, Message> {
+    fn view(&self) -> iced::Element<'_, Message> {
         match self.view {
             ViewVariant::Main(_) => {
                 let header = iced::widget::row![event_catcher(
@@ -114,7 +106,7 @@ impl<DB: AsClient> View<DB> {
         }
     }
 
-    pub fn update(&mut self, msg: Message) -> Task<Message> {
+    fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::Back => {
                 Self::err("This should have been propagated higher")
@@ -135,7 +127,7 @@ impl<DB: AsClient> View<DB> {
                     ));
                 };
 
-                self.view = ViewVariant::Main(view.get_db().clone());
+                self.view = ViewVariant::Main(view.get_db());
                 Task::none()
             }
             Message::EnableSub(msg) => {
@@ -163,7 +155,7 @@ impl<DB: AsClient> View<DB> {
                     ));
                 };
 
-                self.view = ViewVariant::Main(view.get_db().clone());
+                self.view = ViewVariant::Main(view.get_db());
                 Task::none()
             }
             Message::DisableSub(msg) => {
@@ -191,7 +183,7 @@ impl<DB: AsClient> View<DB> {
                     ));
                 };
 
-                self.view = ViewVariant::Main(view.get_db().clone());
+                self.view = ViewVariant::Main(view.get_db());
                 Task::none()
             }
             Message::RenameSub(msg) => {
@@ -207,6 +199,31 @@ impl<DB: AsClient> View<DB> {
                 self.errmsg = Some(msg);
                 Task::none()
             }
+        }
+    }
+}
+
+impl<DB: AsClient> GetDb for View<DB> {
+    type DB = DB;
+    fn get_db(&self) -> DB {
+        match &self.view {
+            ViewVariant::Main(client) => client.clone(),
+            ViewVariant::EnableSub(view) => view.get_db(),
+            ViewVariant::DisableSub(view) => view.get_db(),
+            ViewVariant::RenameSub(view) => view.get_db(),
+        }
+    }
+}
+
+impl<DB: AsClient> View<DB> {
+    fn err(msg: &'static str) -> Task<Message> {
+        Task::done(Message::Error(msg))
+    }
+
+    pub const fn new(client: DB) -> Self {
+        Self {
+            view: ViewVariant::Main(client),
+            errmsg: None,
         }
     }
 }

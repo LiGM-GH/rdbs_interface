@@ -1,3 +1,14 @@
+#![warn(
+    clippy::all,
+    clippy::perf,
+    clippy::style,
+    clippy::nursery,
+    clippy::pedantic,
+    clippy::complexity,
+    clippy::suspicious
+)]
+#![allow(clippy::uninlined_format_args)]
+
 use std::sync::Arc;
 
 use iced::{
@@ -6,23 +17,26 @@ use iced::{
     widget::{focus_next, focus_previous},
 };
 use log::info;
+use log4rs::config::Deserializers;
 use tokio_postgres::Client;
+use traits::Viewable;
 
 mod auth;
 mod helpers;
 mod manage;
 mod theme;
 mod widgets;
+mod traits;
 
 fn main() -> iced::Result {
-    log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
+    log4rs::init_file("log4rs.yaml", Deserializers::default()).unwrap();
 
     info!("Starting the app");
 
     iced::application("RDBS_Interface", View::update, View::view)
         .executor::<tokio::runtime::Runtime>()
         .theme(|_val| theme::get())
-        .subscription(|_self| {
+        .subscription(|_this| {
             iced::keyboard::on_key_press(|key, modif| match key {
                 Key::Named(iced::keyboard::key::Named::Tab)
                     if modif == Modifiers::empty() =>
@@ -34,6 +48,9 @@ fn main() -> iced::Result {
                 {
                     Some(Message::FocusPrev)
                 }
+                Key::Named(iced::keyboard::key::Named::Backspace) => {
+                    Some(Message::LittleBack)
+                }
                 _ => None,
             })
         })
@@ -44,6 +61,7 @@ fn main() -> iced::Result {
 enum Message {
     Auth(auth::Message),
     Manage(manage::Message),
+    LittleBack,
     FocusNext,
     FocusPrev,
 }
@@ -80,6 +98,12 @@ impl View {
         log::trace!("main: update: message: {:?}", msg);
 
         match msg {
+            Message::LittleBack => match &self.view {
+                ViewVariant::Auth => Task::none(),
+                ViewVariant::Manage(view) => {
+                    Task::done(Message::Manage(view.back()))
+                }
+            },
             Message::FocusNext => focus_next(),
             Message::FocusPrev => focus_previous(),
             Message::Auth(auth::Message::Connected(client)) => {

@@ -5,7 +5,7 @@ use iced::{
     widget::{button, column, pick_list, text, text_input, vertical_space},
 };
 
-use crate::{helpers::centered_row, manage::AsClient};
+use crate::{helpers::centered_row, manage::AsClient, traits::{GetDb, Viewable}};
 
 #[derive(Debug)]
 pub struct View<DB: AsClient> {
@@ -26,35 +26,13 @@ pub enum Message {
     Back,
     Clear,
 }
-
-impl<DB: AsClient> View<DB> {
-    pub fn get_db(&self) -> DB {
-        self.client.clone()
+impl<DB: AsClient> Viewable for View<DB> {
+    type Message = Message;
+    fn back(&self) -> Message {
+        Message::Back
     }
 
-    pub fn new(client: DB) -> (Self, Task<Message>) {
-        let subs_task =
-            Task::perform(Self::update_subs(client.clone()), |val| match val {
-                Ok(val) => Message::Subs(Arc::new(val)),
-                Err(err) => {
-                    log::error!("{err}");
-                    Message::Error("Error occurred while getting subscriptions")
-                }
-            });
-
-        (
-            Self {
-                client,
-                errmsg: None,
-                sub_list: Arc::new(Vec::new()),
-                sub_curr: None,
-                new_name: String::new(),
-            },
-            subs_task,
-        )
-    }
-
-    pub fn view(&self) -> Element<'_, Message> {
+    fn view(&self) -> Element<'_, Message> {
         let options = self.sub_list.as_slice();
 
         let header = iced::widget::row![
@@ -95,7 +73,7 @@ impl<DB: AsClient> View<DB> {
         column![header, main_view].into()
     }
 
-    pub fn update(&mut self, msg: Message) -> Task<Message> {
+    fn update(&mut self, msg: Message) -> Task<Message> {
         match msg {
             Message::Error(err) => {
                 self.errmsg = Some(err);
@@ -110,7 +88,7 @@ impl<DB: AsClient> View<DB> {
                 Task::none()
             }
             Message::SubSelected(subscription) => {
-                self.sub_curr = Some(subscription.clone());
+                self.sub_curr = Some(subscription);
                 Task::none()
             }
             Message::Back => Task::done(Message::Error(
@@ -155,6 +133,38 @@ impl<DB: AsClient> View<DB> {
                 })
             }
         }
+    }
+}
+
+impl<DB: AsClient> GetDb for View<DB> {
+    type DB = DB;
+
+    fn get_db(&self) -> DB {
+        self.client.clone()
+    }
+}
+
+impl<DB: AsClient> View<DB> {
+    pub fn new(client: DB) -> (Self, Task<Message>) {
+        let subs_task =
+            Task::perform(Self::update_subs(client.clone()), |val| match val {
+                Ok(val) => Message::Subs(Arc::new(val)),
+                Err(err) => {
+                    log::error!("{err}");
+                    Message::Error("Error occurred while getting subscriptions")
+                }
+            });
+
+        (
+            Self {
+                client,
+                errmsg: None,
+                sub_list: Arc::new(Vec::new()),
+                sub_curr: None,
+                new_name: String::new(),
+            },
+            subs_task,
+        )
     }
 
     async fn rename_subscription(

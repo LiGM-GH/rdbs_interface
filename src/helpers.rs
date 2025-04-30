@@ -1,5 +1,5 @@
 //! This module contains helpers for views:
-//! centered_row:
+//! `centered_row`:
 //! | [space1] VALUE [space1] |
 //!  <---1---><--N--><---1--->
 
